@@ -116,3 +116,16 @@ def fn_generate_df_matched(df, outcome, n_neighbors = 1):
     df_output = pd.concat([df, df_matched], axis=1)
     
     return df_output
+
+
+def fn_IPTW(df, outcome):
+    '''
+    Calculate IPTW estimator
+    '''
+    
+    weight = ((df['treat'] - df['propensity_score'])/(df['propensity_score']*(1. - df['propensity_score'])))
+    ATE = np.mean(weight * df[outcome])
+    
+    return ATE
+
+
