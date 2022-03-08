@@ -11,10 +11,15 @@ from sklearn.neighbors import NearestNeighbors
 
 
 # Choose relevant data
-def fn_generate_data(data_id, df):
-    
+def fn_generate_data(treat_id, control_id, df):
+    '''
+    treat_id: data_id of treatment (str; 'LT' or 'DWT')
+    control_id: data_id of control (str; 'LC', 'DWC', 'PSID', 'PSID2', 'PSID3', 'CPS1', 'CPS2', 'CPS3')
+    '''
+        
     # Select the relevant rows
-    df_tmp = df.loc[df['data_id'].isin(['LT', data_id])].reset_index(drop = True)
+    df_tmp = df.loc[df['data_id'].isin([treat_id, control_id])].reset_index(drop = True)
+    df_tmp = df_tmp.dropna(axis = 1)
     
     return df_tmp
 
