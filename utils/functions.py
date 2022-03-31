@@ -100,8 +100,8 @@ def fn_generate_df_matched(df, outcome, n_neighbors = 1):
             index = index0[where]
             outcome = y0[where]
         
-        matched_index[i, :] = index
-        matched_outcome[i, :] = outcome
+        matched_index[i, :] = index.ravel()
+        matched_outcome[i, :] = outcome.ravel()
         
     df_matched_index = pd.DataFrame(matched_index)
     df_matched_outcome = pd.DataFrame(matched_outcome)
