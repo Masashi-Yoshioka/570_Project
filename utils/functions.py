@@ -1,7 +1,10 @@
 import numpy as np
 import pandas as pd
 from sklearn.neighbors import NearestNeighbors
-
+from sklearn.model_selection import GridSearchCV
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier,GradientBoostingRegressor
+from sklearn.linear_model import LogisticRegression as lr
+from sklearn.linear_model import LinearRegression
 
 ##################################################
 ##################################################
@@ -133,4 +136,84 @@ def fn_IPTW(df, outcome):
     
     return ATE
 
+def fn_RF_treatment_effect(df, outcome):
+    '''
+    Conduct random forest to find the treatment effect
+    '''
+    
+    y = df[outcome]
+    x_columns = [x for x in df.columns if x not in ['data_id','re75','re78','dif','re74']]
+    X = df[x_columns]
+    
+    rf = RandomForestRegressor(n_estimators = 100, oob_score=True)
+    rf.fit(X,y)
 
+    treat = X[X.treat == 1]
+    control = X[X.treat == 0]
+
+    ATE = rf.predict(treat).mean() - rf.predict(control).mean()
+    
+    return ATE
+
+def fn_RF_treatment_effect_CV(df, outcome):
+    '''
+    Conduct random forest to find the treatment effect
+    '''
+    
+    y = df[outcome]
+    x_columns = [x for x in df.columns if x not in ['data_id','re75','re78','dif','re74']]
+    X = df[x_columns]
+    
+    param_grid_p = {'n_estimators': [50, 100, 500, 1000], 'max_features': [2, 3, 4, 5]}
+    
+    rfc = GridSearchCV(RandomForestRegressor(), param_grid = param_grid_p, cv = 5,
+                   scoring = 'neg_mean_squared_error', return_train_score = False, verbose = 1,
+                   error_score = 'raise')
+    
+    rfc.fit(X, y)
+
+    treat = X[X.treat == 1]
+    control = X[X.treat == 0]
+
+    ATE = rfc.predict(treat).mean() - rfc.predict(control).mean()
+    
+    return ATE
+
+
+def fn_GB_treatment_effect(df, outcome):
+    '''
+    Conduct Gradient Boosting to find the treatment effect
+    '''
+    
+    y = df[outcome]
+    x_columns = [x for x in df.columns if x not in ['data_id','re75','re78','dif','re74']]
+    X = df[x_columns]
+    
+    gb = GradientBoostingRegressor(n_estimators = 100, loss = 'ls')
+    gb.fit(X,y)
+
+    treat = X[X.treat == 1]
+    control = X[X.treat == 0]
+
+    ATE = gb.predict(treat).mean() - gb.predict(control).mean()
+    
+    return ATE
+
+def fn_doubly_robust(df,outcome):
+    Y = df[outcome]
+    x_columns = [x for x in df.columns if x in ['treat','age','education','black','hispanic','married','nodegree']]
+    X = df[x_columns]
+
+    X_treat = X[X.treat == 1]
+    X_control = X[X.treat == 0]
+
+    Y_treat = Y[X.treat == 1]
+    Y_control = Y[X.treat == 0]
+    
+    mu0 = LinearRegression().fit(X_control,Y_control).predict(X)
+    mu1 = LinearRegression().fit(X_treat,Y_treat).predict(X)
+    
+    return (
+        np.mean(df['treat']*(Y - mu1)/df['propensity_score'] + mu1) - 
+        np.mean((1-df['treat'])*(Y - mu0)/(1-df['propensity_score']) + mu0)
+    )
