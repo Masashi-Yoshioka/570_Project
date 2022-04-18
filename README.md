@@ -1,2 +1,2 @@
 # 570_Project
-For 570 empirical project
+This repository is for ECON 570 empirical project.
