@@ -5,6 +5,11 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier,GradientBoostingRegressor
 from sklearn.linear_model import LogisticRegression as lr
 from sklearn.linear_model import LinearRegression
+from sklearn.neighbors import NearestNeighbors
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+import statsmodels.formula.api as smf
+from statsmodels.iolib.summary2 import summary_col
 
 ##################################################
 ##################################################
@@ -25,6 +30,97 @@ def fn_generate_data(treat_id, control_id, df):
     df_tmp = df_tmp.dropna(axis = 1)
     
     return df_tmp
+
+def Regression_result(treat_id, control_id, df):
+    '''
+    Conduct three different regressions: (1)with no control, (2)with age and age squared, (3)with all the control
+    '''
+    
+    df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
+    results1 = smf.ols(formula = 'dif ~ treat', data = df0).fit()
+    df0['age2'] = df0['age'] ** 2
+    results2 = smf.ols(formula = 'dif ~ treat + age + age2', data = df0).fit()
+    results3 = smf.ols(formula = 'dif ~ treat + age + age2 + education + black + hispanic + nodegree', data = df0).fit()
+    order = ['treat','age','age2','black','education','hispanic','nodegree']
+    model_names = ['Without control','With age','With all control']
+    sum = summary_col([results1, results2, results3], regressor_order = order, model_names = model_names)
+    return sum
+
+
+def fn_RF_treatment_effect(df,treat_id,control_id,outcome):
+    '''
+    Conduct random forest to find the treatment effect
+    '''
+    
+    df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
+    df0['age2'] = df0['age'] ** 2
+    
+    y = df0[outcome]
+    x_columns = [x for x in df0.columns if x not in ['data_id','re75','re78','dif','re74']]
+    X = df0[x_columns]
+    
+    rf = RandomForestRegressor(n_estimators = 100, oob_score=True)
+    rf.fit(X,y)
+
+    treat = X[X.treat == 1]
+    control = X[X.treat == 0]
+
+    ATE = rf.predict(treat).mean() - rf.predict(control).mean()
+    
+    return ATE
+
+
+def fn_RF_treatment_effect_CV(df, treat_id, control_id, outcome):
+    '''
+    Conduct random forest to find the treatment effect
+    '''
+    
+    df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
+    df0['age2'] = df0['age'] ** 2
+    
+    y = df0[outcome]
+    x_columns = [x for x in df0.columns if x not in ['data_id','re75','re78','dif','re74']]
+    X = df0[x_columns]
+    
+    param_grid_p = {'n_estimators': [50, 100, 500, 1000], 'max_features': [2, 3, 4, 5]}
+    
+    rfc = GridSearchCV(RandomForestRegressor(), param_grid = param_grid_p, cv = 5,
+                   scoring = 'neg_mean_squared_error', return_train_score = False, verbose = 1,
+                   error_score = 'raise')
+    
+    rfc.fit(X, y)
+    
+    best = rfc.best_params_
+
+    treat = X[X.treat == 1]
+    control = X[X.treat == 0]
+
+    ATE = rfc.predict(treat).mean() - rfc.predict(control).mean()
+    
+    return ATE
+
+
+def fn_GB_treatment_effect(df, treat_id, control_id, outcome):
+    '''
+    Conduct Gradient Boosting to find the treatment effect
+    '''
+    
+    df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
+    df0['age2'] = df0['age'] ** 2
+    
+    y = df0[outcome]
+    x_columns = [x for x in df0.columns if x not in ['data_id','re75','re78','dif','re74']]
+    X = df0[x_columns]
+    
+    gb = GradientBoostingRegressor(n_estimators = 100, loss = 'ls')
+    gb.fit(X,y)
+
+    treat = X[X.treat == 1]
+    control = X[X.treat == 0]
+
+    ATE = gb.predict(treat).mean() - gb.predict(control).mean()
+    
+    return ATE
 
 
 # Define X, T and Y
@@ -126,6 +222,50 @@ def fn_generate_df_matched(df, outcome, n_neighbors = 1):
     return df_output
 
 
+def propensity_score_matching(df, treat_id, control_id, method = 'Random Forest', n_neighbors = 1):
+    '''
+    method: 'Random Forest' or 'logit'
+    outcome: 're78' or 'dif'
+    n_neighbors: any number larger than 0
+    '''
+    
+    df1 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
+    
+    if method == 'logit':
+        X, T, Y = fn_generate_variables(data = df1, outcome = 'dif')
+        pipe = Pipeline([('scaler', StandardScaler()),('logistic_classifier', lr())])
+        pipe.fit(X, T.ravel())
+        phat = np.array(pipe.predict_proba(X)[:,1], ndmin = 2).T
+    
+    elif method == 'Random Forest':
+        X, T, Y = fn_generate_variables(data = df1, outcome = 'dif')
+        # Estimate propensity score by Random Forest
+        param_grid_p = {'n_estimators': [50, 100, 500, 1000], 'max_features': [2, 3, 4, 5]}
+        rfc = GridSearchCV(RandomForestClassifier(), param_grid = param_grid_p, cv = 5,
+                           scoring = 'neg_mean_squared_error', return_train_score = False, verbose = 1,
+                           error_score = 'raise')
+        rfc.fit(X, T.ravel())
+        best = rfc.best_params_
+        phat = np.array(rfc.predict_proba(X)[:, 1], ndmin = 2).T
+    
+    # Generate a data frame with propensity score
+    # The data with extremely high or low pronepsity scores are removed
+    df_prop = fn_generate_df_prop(df = df1, prop = phat, truncate_level = 0.01)
+    df_matched = fn_generate_df_matched(df = df_prop, outcome = 'dif', n_neighbors = n_neighbors)
+    
+    if n_neighbors == 1:
+        mean = df_matched[df_matched.treat == 1]['dif'].mean() - df_matched[df_matched.treat == 1]['matched_outcome_1'].mean()
+        return mean, df_prop
+    
+    else:
+        colnames = []
+        for i in range(1, n_neighbors+1):
+            colnames += ['matched_outcome_' + str(i)]
+        tauhats = df_matched[df_matched.treat == 1]['dif'] - df_matched[df_matched.treat == 1][colnames].mean(axis = 1)
+        return np.mean(tauhats), df_prop
+    
+
+
 def fn_IPTW(df, outcome):
     '''
     Calculate IPTW estimator
@@ -133,69 +273,6 @@ def fn_IPTW(df, outcome):
     
     weight = ((df['treat'] - df['propensity_score'])/(df['propensity_score']*(1. - df['propensity_score'])))
     ATE = np.mean(weight * df[outcome])
-    
-    return ATE
-
-def fn_RF_treatment_effect(df, outcome):
-    '''
-    Conduct random forest to find the treatment effect
-    '''
-    
-    y = df[outcome]
-    x_columns = [x for x in df.columns if x not in ['data_id','re75','re78','dif','re74']]
-    X = df[x_columns]
-    
-    rf = RandomForestRegressor(n_estimators = 100, oob_score=True)
-    rf.fit(X,y)
-
-    treat = X[X.treat == 1]
-    control = X[X.treat == 0]
-
-    ATE = rf.predict(treat).mean() - rf.predict(control).mean()
-    
-    return ATE
-
-def fn_RF_treatment_effect_CV(df, outcome):
-    '''
-    Conduct random forest to find the treatment effect
-    '''
-    
-    y = df[outcome]
-    x_columns = [x for x in df.columns if x not in ['data_id','re75','re78','dif','re74']]
-    X = df[x_columns]
-    
-    param_grid_p = {'n_estimators': [50, 100, 500, 1000], 'max_features': [2, 3, 4, 5]}
-    
-    rfc = GridSearchCV(RandomForestRegressor(), param_grid = param_grid_p, cv = 5,
-                   scoring = 'neg_mean_squared_error', return_train_score = False, verbose = 1,
-                   error_score = 'raise')
-    
-    rfc.fit(X, y)
-
-    treat = X[X.treat == 1]
-    control = X[X.treat == 0]
-
-    ATE = rfc.predict(treat).mean() - rfc.predict(control).mean()
-    
-    return ATE
-
-
-def fn_GB_treatment_effect(df, outcome):
-    '''
-    Conduct Gradient Boosting to find the treatment effect
-    '''
-    
-    y = df[outcome]
-    x_columns = [x for x in df.columns if x not in ['data_id','re75','re78','dif','re74']]
-    X = df[x_columns]
-    
-    gb = GradientBoostingRegressor(n_estimators = 100, loss = 'ls')
-    gb.fit(X,y)
-
-    treat = X[X.treat == 1]
-    control = X[X.treat == 0]
-
-    ATE = gb.predict(treat).mean() - gb.predict(control).mean()
     
     return ATE
 
