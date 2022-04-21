@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from sklearn.neighbors import NearestNeighbors
 from sklearn.model_selection import GridSearchCV
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier,GradientBoostingRegressor
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier, GradientBoostingRegressor
 from sklearn.linear_model import LogisticRegression as lr
 from sklearn.linear_model import LinearRegression
 from sklearn.neighbors import NearestNeighbors
@@ -10,11 +10,10 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 import statsmodels.formula.api as smf
 from statsmodels.iolib.summary2 import summary_col
+from tqdm import tqdm
 
 ##################################################
-##################################################
 ########## Helper functions for Project ##########
-##################################################
 ##################################################
 
 
@@ -22,7 +21,7 @@ from statsmodels.iolib.summary2 import summary_col
 def fn_generate_data(treat_id, control_id, df):
     '''
     treat_id: data_id of treatment (str; 'LT' or 'DWT')
-    control_id: data_id of control (str; 'LC', 'DWC', 'PSID', 'PSID2', 'PSID3', 'CPS1', 'CPS2', 'CPS3')
+    control_id: data_id of control (str; 'LC', 'DWC', 'PSID', 'CPS')
     '''
         
     # Select the relevant rows
@@ -31,96 +30,269 @@ def fn_generate_data(treat_id, control_id, df):
     
     return df_tmp
 
-def Regression_result(treat_id, control_id, df):
+
+def Regression_result(outcome, treat_id, control_id, df):
     '''
-    Conduct three different regressions: (1)with no control, (2)with age and age squared, (3)with all the control
-    '''
+    Conduct three different regressions: (1) with no control, (2) with age and age squared, (3) with all the control
     
-    df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
-    results1 = smf.ols(formula = 'dif ~ treat', data = df0).fit()
-    df0['age2'] = df0['age'] ** 2
-    results2 = smf.ols(formula = 'dif ~ treat + age + age2', data = df0).fit()
-    results3 = smf.ols(formula = 'dif ~ treat + age + age2 + education + black + hispanic + nodegree', data = df0).fit()
-    order = ['treat','age','age2','black','education','hispanic','nodegree']
-    model_names = ['Without control','With age','With all control']
-    sum = summary_col([results1, results2, results3], regressor_order = order, model_names = model_names)
-    return sum
-
-
-def fn_RF_treatment_effect(df,treat_id,control_id,outcome):
-    '''
-    Conduct random forest to find the treatment effect
+    outcome: dependent variable (str; 're78' or 'dif')
+    treat_id: data_id of treatment (str; 'LT' or 'DWT')
+    control_id: data_id of control (str; 'LC', 'DWC', 'PSID', 'CPS')
+    df: base data (array_like)
     '''
     
     df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
+    results1 = smf.ols(formula = outcome + ' ~ treat', data = df0).fit()
     df0['age2'] = df0['age'] ** 2
+    results2 = smf.ols(formula = outcome + ' ~ treat + age + age2', data = df0).fit()
+    results3 = smf.ols(formula = outcome + ' ~ treat + age + age2 + education + black + hispanic + nodegree', data = df0).fit()
+    order = ['treat', 'age', 'age2', 'black', 'education', 'hispanic', 'nodegree']
+    model_names = ['Without control', 'With age', 'With all control']
+    summary = summary_col([results1, results2, results3], regressor_order = order, model_names = model_names, stars = True)
     
-    y = df0[outcome]
-    x_columns = [x for x in df0.columns if x not in ['data_id','re75','re78','dif','re74']]
-    X = df0[x_columns]
+    # Show what is the dependent variable
+    if outcome == 're78': print('Dependent Variable: Earnings in 1978')
+    elif outcome == 'dif': print('Dependent Variable: Difference between 1975 and 1978')
     
-    rf = RandomForestRegressor(n_estimators = 100, oob_score=True)
-    rf.fit(X,y)
+    # Show what is the treatment group
+    if treat_id == 'LT': print('Treatment: LaLonde')
+    elif treat_id == 'DWT': print('Treatment: Dehejia and Wahba')
+    
+    # Show what is the control group
+    if control_id == 'LC': print('Control: LaLonde')
+    elif control_id == 'DWC': print('Control: Dehejia and Wahba')
+    elif control_id == 'CPS': print('Control: CPS')
+    elif control_id == 'PSID': print('Control: PSID')
+    
+    return summary
 
-    treat = X[X.treat == 1]
-    control = X[X.treat == 0]
 
-    ATE = rf.predict(treat).mean() - rf.predict(control).mean()
+def fn_RF_treatment_effect(outcome, treat_id, control_id, df, param_grid, cv = 5, verbose = 0):
+    '''
+    Conduct Random Forest to estimate the treatment effect
+    
+    outcome: dependent variable (str; 're78' or 'dif')
+    treat_id: data_id of treatment (str; 'LT' or 'DWT')
+    control_id: data_id of control (str; 'LC', 'DWC', 'PSID', 'CPS')
+    df: base data (array_like)
+    param_grid: grid of hyperparameters (dict)
+    cv: number of folds in cross validation (int)
+    verbose: controls the verbosity (int)
+    '''
+    
+    df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
+    
+    # Choose the relevant variables
+    y = np.array(df0[outcome]).reshape(-1, 1)
+    X = np.array(df0[['age', 'education', 'black', 'hispanic', 'married', 'nodegree']])
+    D = np.array(df0['treat']).reshape(-1, 1)
+    
+    n = X.shape[0]
+    DX = np.concatenate((D, X), axis = 1)
+    D1X = np.concatenate((np.ones([n, 1]), X), axis = 1)
+    D0X = np.concatenate((np.zeros([n, 1]), X), axis = 1)
+    
+    rf = GridSearchCV(RandomForestRegressor(), param_grid = param_grid, cv = cv,
+                      scoring = 'neg_mean_squared_error', verbose = verbose)
+    rf.fit(DX, y.ravel())
+
+    muhat1 = np.array(rf.predict(D1X), ndmin = 2).T
+    muhat0 = np.array(rf.predict(D0X), ndmin = 2).T
+    
+    tauhats = muhat1 - muhat0
+    ATE = np.mean(tauhats)
     
     return ATE
 
 
-def fn_RF_treatment_effect_CV(df, treat_id, control_id, outcome):
+# def fn_RF_treatment_effect(outcome, treat_id, control_id, df):
+#     '''
+#     Conduct random forest to find the treatment effect
+#     '''
+    
+#     df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
+#     df0['age2'] = df0['age'] ** 2
+    
+#     y = df0[outcome]
+#     x_columns = [x for x in df0.columns if x not in ['data_id','re75','re78','dif','re74']]
+#     X = df0[x_columns]
+    
+#     rf = RandomForestRegressor(n_estimators = 100, oob_score=True)
+#     rf.fit(X,y)
+
+#     treat = X[X.treat == 1]
+#     control = X[X.treat == 0]
+
+#     ATE = rf.predict(treat).mean() - rf.predict(control).mean()
+    
+#     return ATE
+
+
+# def fn_RF_treatment_effect_CV(df, treat_id, control_id, outcome):
+#     '''
+#     Conduct random forest to find the treatment effect
+#     '''
+    
+#     df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
+#     df0['age2'] = df0['age'] ** 2
+    
+#     y = df0[outcome]
+#     x_columns = [x for x in df0.columns if x not in ['data_id','re75','re78','dif','re74']]
+#     X = df0[x_columns]
+    
+#     param_grid_p = {'n_estimators': [50, 100, 500, 1000], 'max_features': [2, 3, 4, 5]}
+    
+#     rfc = GridSearchCV(RandomForestRegressor(), param_grid = param_grid_p, cv = 5,
+#                    scoring = 'neg_mean_squared_error', return_train_score = False, verbose = 1,
+#                    error_score = 'raise')
+    
+#     rfc.fit(X, y)
+    
+#     best = rfc.best_params_
+
+#     treat = X[X.treat == 1]
+#     control = X[X.treat == 0]
+
+#     ATE = rfc.predict(treat).mean() - rfc.predict(control).mean()
+    
+#     return ATE
+
+
+def fn_RF_results(df, param_grid, cv = 5, verbose = 0):
     '''
-    Conduct random forest to find the treatment effect
+    Return all the results of Random Forests as a dataframe
+    
+    df: base data (array_like)
+    param_grid: grid of hyperparameters (dict)
+    cv: number of folds in cross validation (int)
+    verbose: controls the verbosity (int)
+    '''
+    
+    outcome_names = ['dif', 're78']
+    
+    results = {}
+    
+    control_names_L = ['LC', 'CPS', 'PSID']
+    control_names_DW = ['DWC', 'CPS', 'PSID']
+    colnames = ['Experiment', 'CPS', 'PSID']
+    
+    for i in tqdm(range(len(colnames))):
+        col = colnames[i]
+        control_L = control_names_L[i]
+        control_DW = control_names_DW[i]
+        res1 = fn_RF_treatment_effect(outcome = 'dif', treat_id = 'LT', control_id = control_L,
+                                      df = df, param_grid = param_grid, cv = cv, verbose = verbose)
+        res2 = fn_RF_treatment_effect(outcome = 're78', treat_id = 'LT', control_id = control_L,
+                                      df = df, param_grid = param_grid, cv = cv, verbose = verbose)
+        res3 = fn_RF_treatment_effect(outcome = 'dif', treat_id = 'DWT', control_id = control_DW,
+                                      df = df, param_grid = param_grid, cv = cv, verbose = verbose)
+        res4 = fn_RF_treatment_effect(outcome = 're78', treat_id = 'DWT', control_id = control_DW,
+                                      df = df, param_grid = param_grid, cv = cv, verbose = verbose)
+        results[col] = [res1, res2, res3, res4]
+        
+    df_results = pd.DataFrame(results)
+    df_results.index = ['LaLonde dif', 'LaLonde re78', 'DW dif', 'DW re78']
+    
+    return df_results
+
+
+def fn_GB_treatment_effect(outcome, treat_id, control_id, df, param_grid, cv = 5, verbose = 0):
+    '''
+    Conduct Gradient Boosting to estimate the treatment effect
+    
+    outcome: dependent variable (str; 're78' or 'dif')
+    treat_id: data_id of treatment (str; 'LT' or 'DWT')
+    control_id: data_id of control (str; 'LC', 'DWC', 'PSID', 'CPS')
+    df: base data (array_like)
+    param_grid: grid of hyperparameters (dict)
+    cv: number of folds in cross validation (int)
+    verbose: controls the verbosity (int)
     '''
     
     df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
-    df0['age2'] = df0['age'] ** 2
     
-    y = df0[outcome]
-    x_columns = [x for x in df0.columns if x not in ['data_id','re75','re78','dif','re74']]
-    X = df0[x_columns]
+    # Choose the relevant variables
+    y = np.array(df0[outcome]).reshape(-1, 1)
+    X = np.array(df0[['age', 'education', 'black', 'hispanic', 'married', 'nodegree']])
+    D = np.array(df0['treat']).reshape(-1, 1)
     
-    param_grid_p = {'n_estimators': [50, 100, 500, 1000], 'max_features': [2, 3, 4, 5]}
+    n = X.shape[0]
+    DX = np.concatenate((D, X), axis = 1)
+    D1X = np.concatenate((np.ones([n, 1]), X), axis = 1)
+    D0X = np.concatenate((np.zeros([n, 1]), X), axis = 1)
     
-    rfc = GridSearchCV(RandomForestRegressor(), param_grid = param_grid_p, cv = 5,
-                   scoring = 'neg_mean_squared_error', return_train_score = False, verbose = 1,
-                   error_score = 'raise')
-    
-    rfc.fit(X, y)
-    
-    best = rfc.best_params_
+    gb = GridSearchCV(GradientBoostingRegressor(), param_grid = param_grid, cv = cv,
+                      scoring = 'neg_mean_squared_error', verbose = verbose)
+    gb.fit(DX, y.ravel())
 
-    treat = X[X.treat == 1]
-    control = X[X.treat == 0]
-
-    ATE = rfc.predict(treat).mean() - rfc.predict(control).mean()
+    muhat1 = np.array(gb.predict(D1X), ndmin = 2).T
+    muhat0 = np.array(gb.predict(D0X), ndmin = 2).T
+    
+    tauhats = muhat1 - muhat0
+    ATE = np.mean(tauhats)
     
     return ATE
 
 
-def fn_GB_treatment_effect(df, treat_id, control_id, outcome):
-    '''
-    Conduct Gradient Boosting to find the treatment effect
-    '''
+# def fn_GB_treatment_effect(df, treat_id, control_id, outcome):
+#     '''
+#     Conduct Gradient Boosting to find the treatment effect
+#     '''
     
-    df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
-    df0['age2'] = df0['age'] ** 2
+#     df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
+#     df0['age2'] = df0['age'] ** 2
     
-    y = df0[outcome]
-    x_columns = [x for x in df0.columns if x not in ['data_id','re75','re78','dif','re74']]
-    X = df0[x_columns]
+#     y = df0[outcome]
+#     x_columns = [x for x in df0.columns if x not in ['data_id','re75','re78','dif','re74']]
+#     X = df0[x_columns]
     
-    gb = GradientBoostingRegressor(n_estimators = 100, loss = 'ls')
-    gb.fit(X,y)
+#     gb = GradientBoostingRegressor(n_estimators = 100, loss = 'ls')
+#     gb.fit(X,y)
 
-    treat = X[X.treat == 1]
-    control = X[X.treat == 0]
+#     treat = X[X.treat == 1]
+#     control = X[X.treat == 0]
 
-    ATE = gb.predict(treat).mean() - gb.predict(control).mean()
+#     ATE = gb.predict(treat).mean() - gb.predict(control).mean()
     
-    return ATE
+#     return ATE
+
+
+def fn_GB_results(df, param_grid, cv = 5, verbose = 0):
+    '''
+    Return all the results of Gradient Boosting as a dataframe
+    
+    df: base data (array_like)
+    param_grid: grid of hyperparameters (dict)
+    cv: number of folds in cross validation (int)
+    verbose: controls the verbosity (int)
+    '''
+    
+    outcome_names = ['dif', 're78']
+    
+    results = {}
+    
+    control_names_L = ['LC', 'CPS', 'PSID']
+    control_names_DW = ['DWC', 'CPS', 'PSID']
+    colnames = ['Experiment', 'CPS', 'PSID']
+    
+    for i in tqdm(range(len(colnames))):
+        col = colnames[i]
+        control_L = control_names_L[i]
+        control_DW = control_names_DW[i]
+        res1 = fn_GB_treatment_effect(outcome = 'dif', treat_id = 'LT', control_id = control_L,
+                                      df = df, param_grid = param_grid, cv = cv, verbose = verbose)
+        res2 = fn_GB_treatment_effect(outcome = 're78', treat_id = 'LT', control_id = control_L,
+                                      df = df, param_grid = param_grid, cv = cv, verbose = verbose)
+        res3 = fn_GB_treatment_effect(outcome = 'dif', treat_id = 'DWT', control_id = control_DW,
+                                      df = df, param_grid = param_grid, cv = cv, verbose = verbose)
+        res4 = fn_GB_treatment_effect(outcome = 're78', treat_id = 'DWT', control_id = control_DW,
+                                      df = df, param_grid = param_grid, cv = cv, verbose = verbose)
+        results[col] = [res1, res2, res3, res4]
+        
+    df_results = pd.DataFrame(results)
+    df_results.index = ['LaLonde dif', 'LaLonde re78', 'DW dif', 'DW re78']
+    
+    return df_results
 
 
 # Define X, T and Y
@@ -265,7 +437,6 @@ def propensity_score_matching(df, treat_id, control_id, method = 'Random Forest'
         return np.mean(tauhats), df_prop
     
 
-
 def fn_IPTW(df, outcome):
     '''
     Calculate IPTW estimator
@@ -275,6 +446,7 @@ def fn_IPTW(df, outcome):
     ATE = np.mean(weight * df[outcome])
     
     return ATE
+
 
 def fn_doubly_robust(df,outcome):
     Y = df[outcome]
