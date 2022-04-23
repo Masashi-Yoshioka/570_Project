@@ -105,59 +105,6 @@ def fn_RF_treatment_effect(outcome, treat_id, control_id, df, param_grid, cv = 5
     return ATE
 
 
-# def fn_RF_treatment_effect(outcome, treat_id, control_id, df):
-#     '''
-#     Conduct random forest to find the treatment effect
-#     '''
-    
-#     df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
-#     df0['age2'] = df0['age'] ** 2
-    
-#     y = df0[outcome]
-#     x_columns = [x for x in df0.columns if x not in ['data_id','re75','re78','dif','re74']]
-#     X = df0[x_columns]
-    
-#     rf = RandomForestRegressor(n_estimators = 100, oob_score=True)
-#     rf.fit(X,y)
-
-#     treat = X[X.treat == 1]
-#     control = X[X.treat == 0]
-
-#     ATE = rf.predict(treat).mean() - rf.predict(control).mean()
-    
-#     return ATE
-
-
-# def fn_RF_treatment_effect_CV(df, treat_id, control_id, outcome):
-#     '''
-#     Conduct random forest to find the treatment effect
-#     '''
-    
-#     df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
-#     df0['age2'] = df0['age'] ** 2
-    
-#     y = df0[outcome]
-#     x_columns = [x for x in df0.columns if x not in ['data_id','re75','re78','dif','re74']]
-#     X = df0[x_columns]
-    
-#     param_grid_p = {'n_estimators': [50, 100, 500, 1000], 'max_features': [2, 3, 4, 5]}
-    
-#     rfc = GridSearchCV(RandomForestRegressor(), param_grid = param_grid_p, cv = 5,
-#                    scoring = 'neg_mean_squared_error', return_train_score = False, verbose = 1,
-#                    error_score = 'raise')
-    
-#     rfc.fit(X, y)
-    
-#     best = rfc.best_params_
-
-#     treat = X[X.treat == 1]
-#     control = X[X.treat == 0]
-
-#     ATE = rfc.predict(treat).mean() - rfc.predict(control).mean()
-    
-#     return ATE
-
-
 def fn_RF_results(df, param_grid, cv = 5, verbose = 0):
     '''
     Return all the results of Random Forests as a dataframe
