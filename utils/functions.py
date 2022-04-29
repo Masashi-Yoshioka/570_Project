@@ -67,6 +67,17 @@ def Regression_result(treat_id, control_id, outcome, df):
     return summary
 
 
+def Regression_summary(treat_id, control_id, outcome, df):
+    
+    df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
+    results1 = smf.ols(formula = outcome + ' ~ treat', data = df0).fit()
+    df0['age2'] = df0['age'] ** 2
+    results2 = smf.ols(formula = outcome + ' ~ treat + age + age2', data = df0).fit()
+    results3 = smf.ols(formula = outcome + ' ~ treat + age + age2 + education + black + hispanic + nodegree', data = df0).fit()
+    summary = [treat_id,control_id,outcome,results1.params[1],results2.params[1],results3.params[1]]
+    
+    return summary
+
 ########################################################
 ##### Combined Random Forest and Gradient Boosting #####
 ########################################################
@@ -653,3 +664,63 @@ def fn_doubly_robust(treat_id, control_id, outcome, df, prop, method_mu, param_g
 #         np.mean(df['treat']*(Y - mu1)/df['propensity_score'] + mu1) - 
 #         np.mean((1-df['treat'])*(Y - mu0)/(1-df['propensity_score']) + mu0)
 #     )
+
+
+
+
+def name(treat_id, control_id, outcome, method):
+    name = treat_id + '~' + control_id + '~' + outcome + '~' + method
+    return name
+
+
+def fn_PS_summary(treat_id, control_id, df, outcome, method, param_grid = None):
+    '''
+    Calculate Propensity Score using 'logit regression', 'Random Forest' or 'Gradient Boosting'
+    '''
+    
+    df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
+    X, T, Y = fn_generate_variables(outcome = outcome, df = df0)
+    
+    if method == 'logit':
+        param_grid = None
+    else:
+        param_grid = param_grid
+    
+    phat_logit = fn_propensity_score(X, T, method = method, param_grid = param_grid)
+    
+    return phat_logit
+
+
+
+def fn_Estimator_summary(Estimator, prop, treat_id, control_id, df, outcome, method, n_neighbors = 1, caliper = np.inf, param_grid = None, param_grid_mu = None, method_mu = None):
+    
+    df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
+    phat_logit = prop
+
+    if Estimator == 'PSM':
+        
+        ATET = propensity_score_matching(df = df0, prop = phat_logit, outcome = outcome,
+                                         estimand = 'ATET', n_neighbors = n_neighbors, caliper = caliper)
+        ATE = propensity_score_matching(df = df0, prop = phat_logit, outcome = outcome,
+                                        estimand = 'ATE', n_neighbors = n_neighbors, caliper = caliper)
+        summary = [Estimator, treat_id, control_id, outcome, method, ATET, ATE]
+    
+        return summary
+    
+    elif Estimator == 'IPTW':
+        
+        ATE = fn_IPTW(treat_id = treat_id, control_id = control_id, df = df, outcome = outcome, prop = phat_logit)
+        
+        summary = [Estimator, treat_id, control_id, outcome, method, ATE]
+        
+        return summary
+    
+    elif Estimator == 'DRE':
+    
+        ATE = fn_doubly_robust(treat_id = treat_id, control_id = control_id, outcome = outcome, df = df,
+                       prop = phat_logit, method_mu = method_mu, param_grid_mu = param_grid_mu)
+        
+        summary = [Estimator, treat_id, control_id, outcome, method, method_mu ,ATE]
+        
+        return summary
+    
