@@ -667,12 +667,6 @@ def fn_doubly_robust(treat_id, control_id, outcome, df, prop, method_mu, param_g
 
 
 
-
-def name(treat_id, control_id, outcome, method):
-    name = treat_id + '~' + control_id + '~' + outcome + '~' + method
-    return name
-
-
 def fn_PS_summary(treat_id, control_id, df, outcome, method, param_grid = None):
     '''
     Calculate Propensity Score using 'logit regression', 'Random Forest' or 'Gradient Boosting'
