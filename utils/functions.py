@@ -12,16 +12,23 @@ import statsmodels.formula.api as smf
 from statsmodels.iolib.summary2 import summary_col
 from tqdm import tqdm
 
+
 ##################################################
 ########## Helper functions for Project ##########
 ##################################################
 
 
-# Choose relevant data
 def fn_generate_data(treat_id, control_id, df):
     '''
-    treat_id: data_id of treatment (str; 'LT' or 'DWT')
-    control_id: data_id of control (str; 'LC', 'DWC', 'PSID', 'CPS')
+    Generate a data frame that contains only the selected treatment and control groups
+    
+    Parameters:
+    treat_id (str): data_id of treatment ('LT' or 'DWT')
+    control_id (str): data_id of control ('LC', 'DWC', 'PSID' or 'CPS')
+    df (DataFrame): base data, i.e., data that contains all the samples (defined as df in our code)
+    
+    Returns:
+    DataFrame: DataFrame that contains only treat_id and control_id
     '''
         
     # Select the relevant rows
@@ -35,10 +42,14 @@ def Regression_result(treat_id, control_id, outcome, df):
     '''
     Conduct three different regressions: (1) with no control, (2) with age and age squared, (3) with all the control
     
-    outcome: dependent variable (str; 're78' or 'dif')
-    treat_id: data_id of treatment (str; 'LT' or 'DWT')
-    control_id: data_id of control (str; 'LC', 'DWC', 'PSID', 'CPS')
-    df: base data (array_like)
+    Parameters:
+    treat_id (str): data_id of treatment ('LT' or 'DWT')
+    control_id (str): data_id of control ('LC', 'DWC', 'PSID' or 'CPS')
+    outcome (str): dependent variable ('re78' or 'dif')
+    df (DataFrame): base data
+    
+    Returns:
+    statsmodels.iolib.summary2.Summary: summarize all the results of regressions
     '''
     
     df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
@@ -78,174 +89,23 @@ def Regression_summary(treat_id, control_id, outcome, df):
     
     return summary
 
-########################################################
-##### Combined Random Forest and Gradient Boosting #####
-########################################################
-
-# def fn_RF_treatment_effect(outcome, treat_id, control_id, df, param_grid, cv = 5, verbose = 0):
-#     '''
-#     Conduct Random Forest to estimate the treatment effect
-    
-#     outcome: dependent variable (str; 're78' or 'dif')
-#     treat_id: data_id of treatment (str; 'LT' or 'DWT')
-#     control_id: data_id of control (str; 'LC', 'DWC', 'PSID', 'CPS')
-#     df: base data (array_like)
-#     param_grid: grid of hyperparameters (dict)
-#     cv: number of folds in cross validation (int)
-#     verbose: controls the verbosity (int)
-#     '''
-    
-#     df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
-    
-#     # Choose the relevant variables
-#     y = np.array(df0[outcome]).reshape(-1, 1)
-#     X = np.array(df0[['age', 'education', 'black', 'hispanic', 'married', 'nodegree']])
-#     D = np.array(df0['treat']).reshape(-1, 1)
-    
-#     n = X.shape[0]
-#     DX = np.concatenate((D, X), axis = 1)
-#     D1X = np.concatenate((np.ones([n, 1]), X), axis = 1)
-#     D0X = np.concatenate((np.zeros([n, 1]), X), axis = 1)
-    
-#     rf = GridSearchCV(RandomForestRegressor(), param_grid = param_grid, cv = cv,
-#                       scoring = 'neg_mean_squared_error', verbose = verbose)
-#     rf.fit(DX, y.ravel())
-
-#     muhat1 = np.array(rf.predict(D1X), ndmin = 2).T
-#     muhat0 = np.array(rf.predict(D0X), ndmin = 2).T
-    
-#     tauhats = muhat1 - muhat0
-#     ATE = np.mean(tauhats)
-    
-#     return ATE
-
-
-# def fn_RF_results(df, param_grid, cv = 5, verbose = 0):
-#     '''
-#     Return all the results of Random Forests as a dataframe
-    
-#     df: base data (array_like)
-#     param_grid: grid of hyperparameters (dict)
-#     cv: number of folds in cross validation (int)
-#     verbose: controls the verbosity (int)
-#     '''
-    
-#     outcome_names = ['dif', 're78']
-    
-#     results = {}
-    
-#     control_names_L = ['LC', 'CPS', 'PSID']
-#     control_names_DW = ['DWC', 'CPS', 'PSID']
-#     colnames = ['Experiment', 'CPS', 'PSID']
-    
-#     for i in tqdm(range(len(colnames))):
-#         col = colnames[i]
-#         control_L = control_names_L[i]
-#         control_DW = control_names_DW[i]
-#         res1 = fn_RF_treatment_effect(outcome = 'dif', treat_id = 'LT', control_id = control_L,
-#                                       df = df, param_grid = param_grid, cv = cv, verbose = verbose)
-#         res2 = fn_RF_treatment_effect(outcome = 're78', treat_id = 'LT', control_id = control_L,
-#                                       df = df, param_grid = param_grid, cv = cv, verbose = verbose)
-#         res3 = fn_RF_treatment_effect(outcome = 'dif', treat_id = 'DWT', control_id = control_DW,
-#                                       df = df, param_grid = param_grid, cv = cv, verbose = verbose)
-#         res4 = fn_RF_treatment_effect(outcome = 're78', treat_id = 'DWT', control_id = control_DW,
-#                                       df = df, param_grid = param_grid, cv = cv, verbose = verbose)
-#         results[col] = [res1, res2, res3, res4]
-        
-#     df_results = pd.DataFrame(results)
-#     df_results.index = ['LaLonde dif', 'LaLonde re78', 'DW dif', 'DW re78']
-    
-#     return df_results
-
-
-# def fn_GB_treatment_effect(outcome, treat_id, control_id, df, param_grid, cv = 5, verbose = 0):
-#     '''
-#     Conduct Gradient Boosting to estimate the treatment effect
-    
-#     outcome: dependent variable (str; 're78' or 'dif')
-#     treat_id: data_id of treatment (str; 'LT' or 'DWT')
-#     control_id: data_id of control (str; 'LC', 'DWC', 'PSID', 'CPS')
-#     df: base data (array_like)
-#     param_grid: grid of hyperparameters (dict)
-#     cv: number of folds in cross validation (int)
-#     verbose: controls the verbosity (int)
-#     '''
-    
-#     df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
-    
-#     # Choose the relevant variables
-#     y = np.array(df0[outcome]).reshape(-1, 1)
-#     X = np.array(df0[['age', 'education', 'black', 'hispanic', 'married', 'nodegree']])
-#     D = np.array(df0['treat']).reshape(-1, 1)
-    
-#     n = X.shape[0]
-#     DX = np.concatenate((D, X), axis = 1)
-#     D1X = np.concatenate((np.ones([n, 1]), X), axis = 1)
-#     D0X = np.concatenate((np.zeros([n, 1]), X), axis = 1)
-    
-#     gb = GridSearchCV(GradientBoostingRegressor(), param_grid = param_grid, cv = cv,
-#                       scoring = 'neg_mean_squared_error', verbose = verbose)
-#     gb.fit(DX, y.ravel())
-
-#     muhat1 = np.array(gb.predict(D1X), ndmin = 2).T
-#     muhat0 = np.array(gb.predict(D0X), ndmin = 2).T
-    
-#     tauhats = muhat1 - muhat0
-#     ATE = np.mean(tauhats)
-    
-#     return ATE
-
-
-# def fn_GB_results(df, param_grid, cv = 5, verbose = 0):
-#     '''
-#     Return all the results of Gradient Boosting as a dataframe
-    
-#     df: base data (array_like)
-#     param_grid: grid of hyperparameters (dict)
-#     cv: number of folds in cross validation (int)
-#     verbose: controls the verbosity (int)
-#     '''
-    
-#     outcome_names = ['dif', 're78']
-    
-#     results = {}
-    
-#     control_names_L = ['LC', 'CPS', 'PSID']
-#     control_names_DW = ['DWC', 'CPS', 'PSID']
-#     colnames = ['Experiment', 'CPS', 'PSID']
-    
-#     for i in tqdm(range(len(colnames))):
-#         col = colnames[i]
-#         control_L = control_names_L[i]
-#         control_DW = control_names_DW[i]
-#         res1 = fn_GB_treatment_effect(outcome = 'dif', treat_id = 'LT', control_id = control_L,
-#                                       df = df, param_grid = param_grid, cv = cv, verbose = verbose)
-#         res2 = fn_GB_treatment_effect(outcome = 're78', treat_id = 'LT', control_id = control_L,
-#                                       df = df, param_grid = param_grid, cv = cv, verbose = verbose)
-#         res3 = fn_GB_treatment_effect(outcome = 'dif', treat_id = 'DWT', control_id = control_DW,
-#                                       df = df, param_grid = param_grid, cv = cv, verbose = verbose)
-#         res4 = fn_GB_treatment_effect(outcome = 're78', treat_id = 'DWT', control_id = control_DW,
-#                                       df = df, param_grid = param_grid, cv = cv, verbose = verbose)
-#         results[col] = [res1, res2, res3, res4]
-        
-#     df_results = pd.DataFrame(results)
-#     df_results.index = ['LaLonde dif', 'LaLonde re78', 'DW dif', 'DW re78']
-    
-#     return df_results
-
 
 def fn_ML_treatment_effect(treat_id, control_id, outcome, df, method, param_grid, cv = 5, verbose = 0):
     '''
     Conduct a machine learning method (Random Forest or Gradient Boosting) to estimate the treatment effect
     
-    outcome: dependent variable (str; 're78' or 'dif')
-    treat_id: data_id of treatment (str; 'LT' or 'DWT')
-    control_id: data_id of control (str; 'LC', 'DWC', 'PSID', 'CPS')
-    df: base data (array_like)
-    method: ML method for estimation (str; 'RF' or 'GB')
-    param_grid: grid of hyperparameters (dict)
-    cv: number of folds in cross validation (int)
-    verbose: controls the verbosity (int)
+    Parameters:
+    treat_id (str): data_id of treatment ('LT' or 'DWT')
+    control_id (str): data_id of control ('LC', 'DWC', 'PSID' or 'CPS')
+    outcome (str): dependent variable ('re78' or 'dif')
+    df (DataFrame): base data
+    method (str): ML method for estimation ('RF' or 'GB')
+    param_grid (dict): grid of hyperparameters
+    cv (int): number of folds in cross validation
+    verbose (int): controls the verbosity
+    
+    Returns:
+    float: average treatment effect estimate
     '''
     
     df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
@@ -283,11 +143,15 @@ def fn_ML_results(df, method, param_grid, cv = 5, verbose = 0):
     '''
     Return all the results of Random Forest or Gradient Boosting as a dataframe
     
-    df: base data (array_like)
-    method: ML method for estimation (str; 'RF' or 'GB')
-    param_grid: grid of hyperparameters (dict)
-    cv: number of folds in cross validation (int)
-    verbose: controls the verbosity (int)
+    Parameters:
+    df (DataFrame): base data
+    method (str): ML method for estimation ('RF' or 'GB')
+    param_grid (dict): grid of hyperparameters
+    cv (int): number of folds in cross validation
+    verbose (int): controls the verbosity
+    
+    Returns:
+    DataFrame: all the results of ATE estimates by Random Forest and Gradient Boosting
     '''
     
     outcome_names = ['dif', 're78']
@@ -318,7 +182,6 @@ def fn_ML_results(df, method, param_grid, cv = 5, verbose = 0):
     return df_results
 
 
-# Define X, T and Y
 def fn_generate_variables(outcome, df):
     '''
     Generate variables
@@ -382,19 +245,6 @@ def truncate_by_p(attribute, p, level = 0.01):
     keep_these = np.logical_and(p >= level, p <= 1.-level)
 
     return attribute[keep_these]
-
-
-###### Combined this function with fn_generate_df_matched
-
-# def fn_generate_df_prop(df, prop, truncate_level = 0.01):
-    
-#     df_tmp = truncate_by_p(df, prop, level = truncate_level).reset_index(drop = True)
-#     p_tmp = truncate_by_p(prop, prop, level = truncate_level)
-    
-#     df_tmp['propensity_score'] = p_tmp
-#     df_tmp['propensity_score_logit'] = np.log(p_tmp) - np.log(1 - p_tmp)
-    
-#     return df_tmp
 
 
 def fn_generate_df_matched(outcome, df, prop, truncate_level = 0.01, n_neighbors = 1, caliper = np.inf):
@@ -501,78 +351,6 @@ def propensity_score_matching(outcome, df, prop, estimand, truncate_level = 0.01
         return ATE
 
 
-# def propensity_score_matching(outcome, treat_id, control_id, df, method, param_grid, cv = 5, n_neighbors = 1):
-#     '''
-#     method: 'Random Forest' or 'logit'
-#     outcome: 're78' or 'dif'
-#     n_neighbors: any number larger than 0
-#     '''
-    
-#     df1 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
-#     X, T, Y = fn_generate_variables(outcome = outcome, df = df1)
-#     phat = fn_propensity_score(X = X, T = T, method = method, param_grid = param_grid, cv = cv)
-    
-#     # Generate a data frame with propensity score
-#     # The data with extremely high or low pronepsity scores are removed
-#     df_prop = fn_generate_df_prop(df = df1, prop = phat, truncate_level = 0.01)
-#     df_matched = fn_generate_df_matched(df = df_prop, outcome = outcome, n_neighbors = n_neighbors)
-    
-#     if n_neighbors == 1:
-#         mean = df_matched[df_matched.treat == 1]['dif'].mean() - df_matched[df_matched.treat == 1]['matched_outcome_1'].mean()
-#         return mean, df_prop
-    
-#     else:
-#         colnames = []
-#         for i in range(1, n_neighbors+1):
-#             colnames += ['matched_outcome_' + str(i)]
-#         tauhats = df_matched[df_matched.treat == 1]['dif'] - df_matched[df_matched.treat == 1][colnames].mean(axis = 1)
-#         return np.mean(tauhats), df_prop
-    
-
-# def propensity_score_matching(df, treat_id, control_id, method = 'Random Forest', n_neighbors = 1):
-#     '''
-#     method: 'Random Forest' or 'logit'
-#     outcome: 're78' or 'dif'
-#     n_neighbors: any number larger than 0
-#     '''
-    
-#     df1 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
-    
-#     if method == 'logit':
-#         X, T, Y = fn_generate_variables(outcome = 'dif', df = df1)
-#         pipe = Pipeline([('scaler', StandardScaler()),
-#                          ('logistic_classifier', lr(penalty = 'none'))])
-#         pipe.fit(X, T.ravel())
-#         phat = np.array(pipe.predict_proba(X)[:, 1], ndmin = 2).T
-    
-#     elif method == 'Random Forest':
-#         X, T, Y = fn_generate_variables(outcome = 'dif', df = df1)
-#         # Estimate propensity score by Random Forest
-#         param_grid_p = {'n_estimators': [50, 100, 500, 1000], 'max_features': [2, 3, 4, 5]}
-#         rfc = GridSearchCV(RandomForestClassifier(), param_grid = param_grid_p, cv = 5,
-#                            scoring = 'neg_mean_squared_error', return_train_score = False, verbose = 1,
-#                            error_score = 'raise')
-#         rfc.fit(X, T.ravel())
-#         best = rfc.best_params_
-#         phat = np.array(rfc.predict_proba(X)[:, 1], ndmin = 2).T
-    
-#     # Generate a data frame with propensity score
-#     # The data with extremely high or low pronepsity scores are removed
-#     df_prop = fn_generate_df_prop(df = df1, prop = phat, truncate_level = 0.01)
-#     df_matched = fn_generate_df_matched(df = df_prop, outcome = 'dif', n_neighbors = n_neighbors)
-    
-#     if n_neighbors == 1:
-#         mean = df_matched[df_matched.treat == 1]['dif'].mean() - df_matched[df_matched.treat == 1]['matched_outcome_1'].mean()
-#         return mean, df_prop
-    
-#     else:
-#         colnames = []
-#         for i in range(1, n_neighbors+1):
-#             colnames += ['matched_outcome_' + str(i)]
-#         tauhats = df_matched[df_matched.treat == 1]['dif'] - df_matched[df_matched.treat == 1][colnames].mean(axis = 1)
-#         return np.mean(tauhats), df_prop
-
-
 def fn_IPTW(treat_id, control_id, outcome, df, prop, truncate_level = 0.01):
     '''
     Calculate IPTW estimator
@@ -588,17 +366,6 @@ def fn_IPTW(treat_id, control_id, outcome, df, prop, truncate_level = 0.01):
     ATE = np.mean(weight * y)
     
     return ATE
-
-
-# def fn_IPTW(df, outcome):
-#     '''
-#     Calculate IPTW estimator
-#     '''
-    
-#     weight = ((df['treat'] - df['propensity_score'])/(df['propensity_score']*(1. - df['propensity_score'])))
-#     ATE = np.mean(weight * df[outcome])
-    
-#     return ATE
 
 
 def fn_doubly_robust(treat_id, control_id, outcome, df, prop, method_mu, param_grid_mu, truncate_level = 0.01, cv = 5, verbose = 0):
@@ -644,27 +411,6 @@ def fn_doubly_robust(treat_id, control_id, outcome, df, prop, method_mu, param_g
     ATE = np.mean(tauhats)
     
     return ATE
-
-
-# def fn_doubly_robust(df,outcome):
-#     Y = df[outcome]
-#     x_columns = [x for x in df.columns if x in ['treat','age','education','black','hispanic','married','nodegree']]
-#     X = df[x_columns]
-
-#     X_treat = X[X.treat == 1]
-#     X_control = X[X.treat == 0]
-
-#     Y_treat = Y[X.treat == 1]
-#     Y_control = Y[X.treat == 0]
-    
-#     mu0 = LinearRegression().fit(X_control,Y_control).predict(X)
-#     mu1 = LinearRegression().fit(X_treat,Y_treat).predict(X)
-    
-#     return (
-#         np.mean(df['treat']*(Y - mu1)/df['propensity_score'] + mu1) - 
-#         np.mean((1-df['treat'])*(Y - mu0)/(1-df['propensity_score']) + mu0)
-#     )
-
 
 
 def fn_PS_summary(treat_id, control_id, df, outcome, method, param_grid = None):
