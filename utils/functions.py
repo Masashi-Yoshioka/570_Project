@@ -95,8 +95,8 @@ def fn_regression_result(treat_id, control_id, outcome, df):
     results1 = smf.ols(formula = outcome + ' ~ treat', data = df0).fit()
     df0['age2'] = df0['age'] ** 2
     results2 = smf.ols(formula = outcome + ' ~ treat + age + age2', data = df0).fit()
-    results3 = smf.ols(formula = outcome + ' ~ treat + age + age2 + education + black + hispanic + nodegree', data = df0).fit()
-    order = ['treat', 'age', 'age2', 'black', 'education', 'hispanic', 'nodegree']
+    results3 = smf.ols(formula = outcome + ' ~ treat + age + age2 + education + black + hispanic + nodegree + re75', data = df0).fit()
+    order = ['treat', 'age', 'age2', 'black', 'education', 'hispanic', 'nodegree', 're75']
     model_names = ['Without control', 'With age', 'With all control']
     summary = summary_col([results1, results2, results3], regressor_order = order, model_names = model_names, stars = True)
     
@@ -119,19 +119,23 @@ def fn_regression_result(treat_id, control_id, outcome, df):
 
 def fn_regression_coef(treat_id, control_id, outcome, df):
     '''
-    
+    Summarize the OLS estimates for the coefficient on treatment dummy as a list
     
     Parameters:
+    treat_id (str): data_id of treatment ('LT' or 'DWT')
+    control_id (str): data_id of control ('LC', 'DWC', 'PSID' or 'CPS')
+    outcome (str): dependent variable ('re78' or 'dif')
+    df (DataFrame): base data
     
     Returns:
-    
+    list: summary of coefficients
     '''
     
     df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
     results1 = smf.ols(formula = outcome + ' ~ treat', data = df0).fit()
     df0['age2'] = df0['age'] ** 2
     results2 = smf.ols(formula = outcome + ' ~ treat + age + age2', data = df0).fit()
-    results3 = smf.ols(formula = outcome + ' ~ treat + age + age2 + education + black + hispanic + nodegree', data = df0).fit()
+    results3 = smf.ols(formula = outcome + ' ~ treat + age + age2 + education + black + hispanic + nodegree + re75', data = df0).fit()
     list_coef = [outcome, treat_id, control_id, results1.params[1], results2.params[1], results3.params[1]]
     
     return list_coef
@@ -139,12 +143,14 @@ def fn_regression_coef(treat_id, control_id, outcome, df):
 
 def fn_regression_summary(df, outcome):
     '''
-    
+    Summarize the results of linear regressions as a data frame
     
     Parameters:
+    df (DataFrame): base data
+    outcome (str): dependent variable ('re78' or 'dif')
     
     Returns:
-    
+    DataFrame: summary of linear regression results
     '''
     
     reg_summary = np.zeros([6, 6])
@@ -188,14 +194,14 @@ def fn_ML_treatment_effect(treat_id, control_id, outcome, df, method, param_grid
     verbose (int): controls the verbosity
     
     Returns:
-    float: average treatment effect estimate
+    list of float: ATE and ATET estimates
     '''
     
     df0 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
     
     # Choose the relevant variables
     y = np.array(df0[outcome]).reshape(-1, 1)
-    X = np.array(df0[['age', 'education', 'black', 'hispanic', 'married', 'nodegree']])
+    X = np.array(df0[['age', 'education', 'black', 'hispanic', 'married', 'nodegree', 're75']])
     D = np.array(df0['treat']).reshape(-1, 1)
     
     n = X.shape[0]
@@ -218,8 +224,9 @@ def fn_ML_treatment_effect(treat_id, control_id, outcome, df, method, param_grid
     
     tauhats = muhat1 - muhat0
     ATE = np.mean(tauhats)
+    ATET = np.mean(tauhats[D == 1])
     
-    return ATE
+    return ATE, ATET
 
 
 def fn_ML_results(df, method, param_grid, cv = 5, verbose = 0):
@@ -238,7 +245,7 @@ def fn_ML_results(df, method, param_grid, cv = 5, verbose = 0):
     '''
 
     Dict = {'Outcome': [], 'Treatment': [], 'Control':[], 'Method': [],
-            'Est_Imput': [], 'ATE': []}
+            'Est_Imput': [], 'ATE': [], 'ATET': []}
     
     outcome_names = ['dif', 're78']
         
@@ -253,20 +260,22 @@ def fn_ML_results(df, method, param_grid, cv = 5, verbose = 0):
             if treat_id == 'LT':
                 for control_id in control_names_L:
                 
-                    ATE = fn_ML_treatment_effect(outcome = outcome, treat_id = treat_id, control_id = control_id,
-                                                 df = df, method = method, param_grid = param_grid, cv = cv, verbose = verbose)
+                    ATE, ATET = fn_ML_treatment_effect(outcome = outcome, treat_id = treat_id, control_id = control_id,
+                                                       df = df, method = method, param_grid = param_grid, cv = cv, verbose = verbose)
 
                     Dict['Outcome'] += [outcome]; Dict['Treatment'] += [treat_id]; Dict['Control'] += [control_id]
-                    Dict['Method'] += ['Regression']; Dict['Est_Imput'] += [method]; Dict['ATE'] += [ATE]
+                    Dict['Method'] += ['Regression']; Dict['Est_Imput'] += [method]
+                    Dict['ATE'] += [ATE]; Dict['ATET'] += [ATET]
 
             elif treat_id == 'DWT':
                 for control_id in control_names_DW:
 
-                    ATE = fn_ML_treatment_effect(outcome = outcome, treat_id = treat_id, control_id = control_id,
-                                                 df = df, method = method, param_grid = param_grid, cv = cv, verbose = verbose)
+                    ATE, ATET = fn_ML_treatment_effect(outcome = outcome, treat_id = treat_id, control_id = control_id,
+                                                       df = df, method = method, param_grid = param_grid, cv = cv, verbose = verbose)
 
                     Dict['Outcome'] += [outcome]; Dict['Treatment'] += [treat_id]; Dict['Control'] += [control_id]
-                    Dict['Method'] += ['Regression']; Dict['Est_Imput'] += [method]; Dict['ATE'] += [ATE]
+                    Dict['Method'] += ['Regression']; Dict['Est_Imput'] += [method]
+                    Dict['ATE'] += [ATE]; Dict['ATET'] += [ATET]
         
     df_results = pd.DataFrame.from_dict(Dict)
     
@@ -295,23 +304,24 @@ def fn_generate_variables(outcome, df):
     nodegree = np.array(df['nodegree'], ndmin = 2).T
     re75 = np.array(df['re75'], ndmin = 2).T
     
-    T = treat.copy()
+    D = treat.copy()
     X = np.concatenate((age, education, black, hispanic, married, nodegree, re75), axis = 1)
     
     if outcome == None:
-        return X, T
+        return X, D
+    
     else:
         Y = np.array(df[outcome], ndmin = 2).T
-        return X, T, Y
+        return X, D, Y
 
 
-def fn_propensity_score(X, T, method, param_grid = None, cv = 5):
+def fn_propensity_score(X, D, method, param_grid = None, cv = 5):
     '''
     Estimate the propensity score by logit, RF or GB
     
     Parameters:
     X (array_like): covariates
-    T (array_like): treatment variable
+    D (array_like): treatment variable
     method (str): estimation method for propensity score ('logit', 'RF' or 'GB')
     param_grid (dict): grid of hyperparameters
     cv (int): number of folds in cross validation
@@ -332,7 +342,7 @@ def fn_propensity_score(X, T, method, param_grid = None, cv = 5):
         mod = GridSearchCV(GradientBoostingClassifier(), param_grid = param_grid, cv = cv,
                            scoring = 'neg_mean_squared_error', return_train_score = False)
     
-    mod.fit(X, T.ravel())
+    mod.fit(X, D.ravel())
     phat = np.array(mod.predict_proba(X)[:,1], ndmin = 2).T
     
     return phat
@@ -529,12 +539,15 @@ def fn_IPTW(treat_id, control_id, outcome, df, prop, truncate_level = 0.01):
     y = df_tmp2[outcome]
     
     weight = (W - phat)/(phat * (1. - phat))
-    ATE = np.mean(weight * y)
+    tauhats = weight * y
+    ATE = np.mean(tauhats)
+    ATET = np.mean(tauhats[W == 1])
     
-    return ATE
+    return ATE, ATET
 
 
-def fn_doubly_robust(treat_id, control_id, outcome, df, prop, method_mu, param_grid_mu, truncate_level = 0.01, cv = 5, verbose = 0):
+def fn_doubly_robust(treat_id, control_id, outcome, df, prop, method_mu, param_grid_mu,
+                     truncate_level = 0.01, cv = 5, verbose = 0):
     '''
     
     
@@ -545,12 +558,12 @@ def fn_doubly_robust(treat_id, control_id, outcome, df, prop, method_mu, param_g
     '''
     
     df_tmp1 = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
-    X, T, Y = fn_generate_variables(outcome = outcome, df = df_tmp1)
+    X, D, Y = fn_generate_variables(outcome = outcome, df = df_tmp1)
 
     n = X.shape[0]
-    TX = np.concatenate((T, X), axis = 1)
-    T1X = np.concatenate((np.ones([n, 1]), X), axis = 1)
-    T0X = np.concatenate((np.zeros([n, 1]), X), axis = 1)
+    DX = np.concatenate((D, X), axis = 1)
+    D1X = np.concatenate((np.ones([n, 1]), X), axis = 1)
+    D0X = np.concatenate((np.zeros([n, 1]), X), axis = 1)
 
     if method_mu == 'RF':
         Regressor = RandomForestRegressor()
@@ -560,10 +573,10 @@ def fn_doubly_robust(treat_id, control_id, outcome, df, prop, method_mu, param_g
 
     mod = GridSearchCV(Regressor, param_grid = param_grid_mu, cv = cv,
                        scoring = 'neg_mean_squared_error', verbose = verbose)
-    mod.fit(TX, Y.ravel())
+    mod.fit(DX, Y.ravel())
 
-    muhat1 = np.array(mod.predict(T1X), ndmin = 2).T
-    muhat0 = np.array(mod.predict(T0X), ndmin = 2).T
+    muhat1 = np.array(mod.predict(D1X), ndmin = 2).T
+    muhat0 = np.array(mod.predict(D0X), ndmin = 2).T
 
     df_muhat1 = pd.DataFrame(muhat1)
     df_muhat1.columns = ['muhat1']
@@ -583,11 +596,13 @@ def fn_doubly_robust(treat_id, control_id, outcome, df, prop, method_mu, param_g
     np.mean(tauhats)
     
     ATE = np.mean(tauhats)
+    ATET = np.mean(tauhats[W == 1])
     
-    return ATE
+    return ATE, ATET
 
 
-def fn_generate_df_results(df, param_grid_p, param_grid_mu, cv = 5, truncate_level = 0.01, n_neighbors = 1, caliper = np.inf, verbose = 0):
+def fn_generate_df_results(df, param_grid_p, param_grid_mu, cv = 5, truncate_level = 0.01,
+                           n_neighbors = 1, caliper = np.inf, verbose = 0):
     '''
     
     
@@ -611,14 +626,14 @@ def fn_generate_df_results(df, param_grid_p, param_grid_mu, cv = 5, truncate_lev
         for control_id in control_names:
             
             df_tmp = fn_generate_data(treat_id = treat_id, control_id = control_id, df = df)
-            X, T = fn_generate_variables(outcome = None, df = df_tmp)
+            X, D = fn_generate_variables(outcome = None, df = df_tmp)
 
             for prop_method in prop_method_names:
                 
                 if prop_method == 'logit':
-                    phat = fn_propensity_score(X, T, method = prop_method, param_grid = None, cv = cv)
+                    phat = fn_propensity_score(X, D, method = prop_method, param_grid = None, cv = cv)
                 else:
-                    phat = fn_propensity_score(X, T, method = prop_method, param_grid = param_grid_p, cv = cv)
+                    phat = fn_propensity_score(X, D, method = prop_method, param_grid = param_grid_p, cv = cv)
 
                 for outcome in outcome_names:
 
@@ -633,21 +648,21 @@ def fn_generate_df_results(df, param_grid_p, param_grid_mu, cv = 5, truncate_lev
                     Dict['ATE'] += [ATE]; Dict['ATET'] += [ATET]
 
                     # IPTW estimator
-                    ATE = fn_IPTW(treat_id = treat_id, control_id = control_id, df = df, outcome = outcome, prop = phat)
+                    ATE, ATET = fn_IPTW(treat_id = treat_id, control_id = control_id, df = df, outcome = outcome, prop = phat)
 
                     Dict['Outcome'] += [outcome]; Dict['Treatment'] += [treat_id]; Dict['Control'] += [control_id]
                     Dict['Method'] += ['IPTW']; Dict['Est_Prop'] += [prop_method]; Dict['Est_Imput'] += [None]
-                    Dict['ATE'] += [ATE]; Dict['ATET'] += [None]
+                    Dict['ATE'] += [ATE]; Dict['ATET'] += [ATET]
 
                     # Doubly robust estimator
                     for imput_method in imput_method_names:
-                        ATE = fn_doubly_robust(treat_id = treat_id, control_id = control_id, outcome = outcome,
-                                               df = df, prop = phat, method_mu = imput_method, param_grid_mu = param_grid_mu,
-                                               truncate_level = truncate_level, cv = cv, verbose = verbose)
+                        ATE, ATET = fn_doubly_robust(treat_id = treat_id, control_id = control_id, outcome = outcome,
+                                                     df = df, prop = phat, method_mu = imput_method, param_grid_mu = param_grid_mu,
+                                                     truncate_level = truncate_level, cv = cv, verbose = verbose)
 
                         Dict['Outcome'] += [outcome]; Dict['Treatment'] += [treat_id]; Dict['Control'] += [control_id]
                         Dict['Method'] += ['DR']; Dict['Est_Prop'] += [prop_method]; Dict['Est_Imput'] += [imput_method]
-                        Dict['ATE'] += [ATE]; Dict['ATET'] += [None]
+                        Dict['ATE'] += [ATE]; Dict['ATET'] += [ATET]
 
     df_results = pd.DataFrame.from_dict(Dict)
     
