@@ -6,7 +6,7 @@ May 6, 2022
 
 ## Description
 
-This repository summarizes the files for our final project of ECON 570: Big Data Econometrics in Spring 2022.
+This repository summarizes the files for our final project of ECON 570: Big Data Econometrics in Spring 2022. The deliverable is 570_Project.ipynb, which includes code and explanation. 'data' folder contains the data that we have analyzed for the project, which are retrieved February 2, 2022 from https://github.com/jjchern/lalonde/tree/master/data. 'utils' folder contains .py files for helper functions. 'results' folder contains ATE and ATET estimates that we have got in the project.
 
 ## Abstract
 
