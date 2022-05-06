@@ -44,7 +44,7 @@ def fn_boxplots(df, re74 = True):
         axes[1, 0].set_title('Earnings in 1974')
         axes[1, 1].set_title('Earnings in 1975')
     
-    # DO not include the boxplot of re74
+    # Do not include the boxplot of re74
     elif re74 == False:
         fig, axes = plt.subplots(1, 3, figsize = (15, 5))
 
@@ -74,17 +74,17 @@ def fn_generate_data(treat_id, control_id, df):
     '''
         
     # Select the relevant rows
-    df_tmp = df.loc[df['data_id'].isin([treat_id, control_id])].reset_index(drop = True)
+    df0 = df.loc[df['data_id'].isin([treat_id, control_id])].reset_index(drop = True)
     
     # Drop re74 when LaLonde dataset is used
-    df_tmp = df_tmp.dropna(axis = 1)
+    df0 = df0.dropna(axis = 1)
     
-    return df_tmp
+    return df0
 
 
 def fn_regression_result(treat_id, control_id, outcome, df):
     '''
-    Conduct three different regressions: (1) with no control, (2) with age and age squared, (3) with all the controls
+    Conduct three different linear regressions: i) with no control, ii) with age and age squared, iii) with all the controls
     
     Parameters:
     treat_id (str): data_id of treatment ('LT' or 'DWT')
@@ -109,7 +109,7 @@ def fn_regression_result(treat_id, control_id, outcome, df):
                        data = df0).fit()
     
     # Summarize the results using summary_col()
-    order = ['treat', 'age', 'age2', 'black', 'education', 'hispanic', 'married', 'nodegree', 're75']
+    order = ['treat', 'age', 'age2', 'education', 'black', 'hispanic', 'married', 'nodegree', 're75']
     model_names = ['Without control', 'With age', 'With all controls']
     summary = summary_col([results1, results2, results3], regressor_order = order, 
                           model_names = model_names, stars = True)
@@ -207,7 +207,7 @@ def fn_regression_summary(df, outcome):
 
 def fn_ML_treatment_effect(treat_id, control_id, outcome, df, method, param_grid, cv = 5, verbose = 0):
     '''
-    Implement a machine learning method (Random Forest or Gradient Boosting) to estimate ATE and ATET
+    Implement a machine learning (Random Forest or Gradient Boosting) regression to estimate ATE and ATET
     
     Parameters:
     treat_id (str): data_id of treatment ('LT' or 'DWT')
@@ -233,9 +233,9 @@ def fn_ML_treatment_effect(treat_id, control_id, outcome, df, method, param_grid
     
     # Create variables for fitting and predicting
     n = X.shape[0]
-    DX = np.concatenate((D, X), axis = 1)
-    D1X = np.concatenate((np.ones([n, 1]), X), axis = 1)
-    D0X = np.concatenate((np.zeros([n, 1]), X), axis = 1)
+    DX = np.concatenate([D, X], axis = 1)
+    D1X = np.concatenate([np.ones([n, 1]), X], axis = 1)
+    D0X = np.concatenate([np.zeros([n, 1]), X], axis = 1)
     
     # Run Random Forest
     if method == 'RF':
@@ -340,7 +340,7 @@ def fn_generate_variables(treat_id, control_id, outcome, df):
     df (DataFrame): base data
     
     Returns:
-    list of np.array: covariates, treatment dummy (and outcome if outcome != None)
+    list of array: covariates, treatment dummy (and outcome if outcome != None)
     '''
     
     # Pick up the relevant samples
@@ -358,7 +358,7 @@ def fn_generate_variables(treat_id, control_id, outcome, df):
     
     # Define D and X
     D = treat.copy()
-    X = np.concatenate((age, education, black, hispanic, married, nodegree, re75), axis = 1)
+    X = np.concatenate([age, education, black, hispanic, married, nodegree, re75], axis = 1)
     
     if outcome == None:
         
