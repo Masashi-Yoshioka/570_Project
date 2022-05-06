@@ -109,7 +109,7 @@ def fn_regression_result(treat_id, control_id, outcome, df):
                        data = df0).fit()
     
     # Summarize the results using summary_col()
-    order = ['treat', 'age', 'age2', 'black', 'education', 'hispanic', 'nodegree', 're75']
+    order = ['treat', 'age', 'age2', 'black', 'education', 'hispanic', 'married', 'nodegree', 're75']
     model_names = ['Without control', 'With age', 'With all controls']
     summary = summary_col([results1, results2, results3], regressor_order = order, 
                           model_names = model_names, stars = True)
