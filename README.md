@@ -4,6 +4,8 @@ Masashi Yoshioka (3200-3439-52), Jincen Jiang (XXXX-XXXX-XX), Shuxian Mao (6221-
 
 May 6, 2022
 
+## Description
+
 This repository summarizes the files for our final project of ECON 570: Big Data Econometrics in Spring 2022.
 
 ## Abstract
