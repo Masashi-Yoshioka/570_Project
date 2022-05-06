@@ -593,7 +593,7 @@ def fn_generate_df_matched_treat(df_matched, treat_id):
         
         # Add the row of matched sample
         df_matched_treat = pd.concat([df_matched_treat, df_matched_row], axis = 0)
-
+    
     return df_matched_treat
 
 
@@ -666,7 +666,7 @@ def fn_IPTW(treat_id, control_id, outcome, df, prop, truncate_level = 0.01):
     truncate_level (float): truncate level, i.e., samples with (level < prop < 1 - level) will be kept
     
     Returns:
-    float: ATE estimate
+    list of float: ATE and ATET estimates
     '''
     
     # Pick up the relevant samples
@@ -674,17 +674,21 @@ def fn_IPTW(treat_id, control_id, outcome, df, prop, truncate_level = 0.01):
     
     # Drop samples that have an extremely high or low propensity score
     df0 = truncate_by_prop(attribute = df0, prop = prop, level = truncate_level).reset_index(drop = True)
-    W = np.array(df0['treat']).ravel()
+    d = np.array(df0['treat']).ravel()
     y = np.array(df0[outcome]).ravel()
     phat = truncate_by_prop(attribute = prop, prop = prop, level = truncate_level)
     phat = np.array(phat).ravel()
     
     # Compute ATE estimate
-    weight = (W - phat)/(phat * (1. - phat))
-    tauhats = weight * y
-    ATE = np.mean(tauhats)
+    weight_ATE = (d - phat)/(phat * (1. - phat))
+    ATE = np.mean(weight_ATE * y)
     
-    return ATE
+    # Compute ATET estimate
+    n1 = np.sum(d)
+    weight_ATET = (d - phat)/(1. - phat)
+    ATET = np.sum(weight_ATET * y)/n1
+    
+    return ATE, ATET
 
 
 def fn_doubly_robust(treat_id, control_id, outcome, df, prop, method_mu, param_grid_mu,
@@ -705,7 +709,7 @@ def fn_doubly_robust(treat_id, control_id, outcome, df, prop, method_mu, param_g
     verbose (int): controls the verbosity    
     
     Returns:
-    float: ATE estimate
+    list of float: ATE and ATET estimates
     '''
     
     # Generate variables
@@ -748,14 +752,20 @@ def fn_doubly_robust(treat_id, control_id, outcome, df, prop, method_mu, param_g
     mu0 = truncate_by_prop(attribute = muhat0, prop = prop, level = truncate_level)
     mu0 = np.array(mu0).ravel()
 
-    # Compute ATE and ATET estimates
+    # Compute ATE estimate
     tauhats1 = d * (y - mu1)/phat + mu1
     tauhats2 = (1. - d) * (y - mu0)/(1. - phat) + mu0
-    tauhats = tauhats1 - tauhats2
+    tauhats_ATE = tauhats1 - tauhats2
     
-    ATE = np.mean(tauhats)
+    ATE = np.mean(tauhats_ATE)
     
-    return ATE
+    # Compute ATET estimate
+    n1 = np.sum(d)
+    tauhats_ATET = d * y - (phat * (1. - d) * y + (d - phat) * mu0)/(1. - phat)
+    
+    ATET = np.sum(tauhats_ATET)/n1
+    
+    return ATE, ATET
 
 
 def fn_generate_df_results(df, param_grid_p, param_grid_mu, truncate_level = 0.01, cv = 5,
@@ -817,24 +827,24 @@ def fn_generate_df_results(df, param_grid_p, param_grid_mu, truncate_level = 0.0
                             Dict['ATE'] += [ATE]; Dict['ATET'] += [ATET]
 
                     # IPTW estimator
-                    ATE = fn_IPTW(treat_id = treat_id, control_id = control_id, df = df, outcome = outcome, prop = phat)
+                    ATE, ATET = fn_IPTW(treat_id = treat_id, control_id = control_id, df = df, outcome = outcome, prop = phat)
 
                     Dict['Outcome'] += [outcome]; Dict['Treatment'] += [treat_id]; Dict['Control'] += [control_id]
                     Dict['Method'] += ['IPTW']; Dict['Est_Prop'] += [prop_method]; Dict['Est_Imput'] += [None]
                     Dict['Neighbors'] += [None]; Dict['Caliper_Std'] += [None]
-                    Dict['ATE'] += [ATE]; Dict['ATET'] += [None]
+                    Dict['ATE'] += [ATE]; Dict['ATET'] += [ATET]
 
                     # Doubly robust estimator
                     for imput_method in imput_method_names:
                         
-                        ATE = fn_doubly_robust(treat_id = treat_id, control_id = control_id, outcome = outcome,
-                                               df = df, prop = phat, method_mu = imput_method, param_grid_mu = param_grid_mu,
-                                               truncate_level = truncate_level, cv = cv, verbose = verbose)
+                        ATE, ATET = fn_doubly_robust(treat_id = treat_id, control_id = control_id, outcome = outcome,
+                                                     df = df, prop = phat, method_mu = imput_method, param_grid_mu = param_grid_mu,
+                                                     truncate_level = truncate_level, cv = cv, verbose = verbose)
 
                         Dict['Outcome'] += [outcome]; Dict['Treatment'] += [treat_id]; Dict['Control'] += [control_id]
                         Dict['Method'] += ['DR']; Dict['Est_Prop'] += [prop_method]; Dict['Est_Imput'] += [imput_method]
                         Dict['Neighbors'] += [None]; Dict['Caliper_Std'] += [None]
-                        Dict['ATE'] += [ATE]; Dict['ATET'] += [None]
+                        Dict['ATE'] += [ATE]; Dict['ATET'] += [ATET]
 
     # Convert the dictionary into a data frame
     df_results = pd.DataFrame.from_dict(Dict)
