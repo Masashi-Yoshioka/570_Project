@@ -1,7 +1,10 @@
-# 570_Project
-This repository summarizes the files for final project of ECON 570: Big Data Econometrics in Spring 2022.
+# Evaluation of Job Training Program with Nonexperimental Data
 
 Masashi Yoshioka (3200-3439-52), Jincen Jiang (XXXX-XXXX-XX), Shuxian Mao (6221-2815-32)
+
+May 6, 2022
+
+This repository summarizes the files for our final project of ECON 570: Big Data Econometrics in Spring 2022.
 
 ## Abstract
 
